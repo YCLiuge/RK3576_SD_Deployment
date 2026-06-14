@@ -1,0 +1,5 @@
+numpy
+Pillow
+tokenizers
+rknn-toolkit-lite2==2.3.2
+

@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+venv_rknn/
+
+# Outputs
+outputs/
+sd_outputs/
+*.log
+*.tmp
+
+# Large model artifacts
+models/
+lcm_sd/
+*.onnx
+*.onnx_data
+*.rknn
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+
+# Large generated debug arrays
+onnx_ref/
+pytorch_ref/
+check_external_data/
+*.npy
+!embeds/pos_emb.npy
+!embeds/neg_emb.npy
+
+# Local OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
