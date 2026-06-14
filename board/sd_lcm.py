@@ -42,9 +42,9 @@ MODES = {
     },
     "quality": {
         "resolution": 512,
-        "steps": 8,
+        "steps": 100,
         "cfg": 6.0,
-        "description": "Higher quality 512x512 generation, roughly twice the balanced time.",
+        "description": "Slow 512x512 high-quality generation, intended for final anime images.",
     },
 }
 
@@ -56,6 +56,7 @@ class NumpyLCMScheduler:
         beta_start = config.get("beta_start", 0.00085)
         beta_end = config.get("beta_end", 0.012)
         train_steps = config.get("num_train_timesteps", 1000)
+        self.train_steps = train_steps
         betas = np.linspace(beta_start**0.5, beta_end**0.5, train_steps, dtype=np.float64) ** 2
         self.alphas_cumprod = np.cumprod(1.0 - betas)
         self.original_inference_steps = config.get("original_inference_steps", 50)
@@ -66,13 +67,12 @@ class NumpyLCMScheduler:
     def set_timesteps(self, num_steps):
         if num_steps < 1:
             raise ValueError("--steps must be positive")
-        if num_steps > self.original_inference_steps:
-            raise ValueError(
-                f"LCM steps {num_steps} exceeds original_inference_steps "
-                f"{self.original_inference_steps} from scheduler_config.json"
-            )
-        k = len(self.alphas_cumprod) // self.original_inference_steps
-        lcm_origin_timesteps = np.asarray(range(1, self.original_inference_steps + 1)) * k - 1
+        if num_steps > self.train_steps:
+            raise ValueError(f"--steps must be <= {self.train_steps}")
+        original_steps = max(self.original_inference_steps, num_steps)
+        k = self.train_steps / float(original_steps)
+        lcm_origin_timesteps = np.rint(np.asarray(range(1, original_steps + 1)) * k - 1)
+        lcm_origin_timesteps = np.clip(lcm_origin_timesteps, 0, self.train_steps - 1).astype(np.int64)
         lcm_origin_timesteps = lcm_origin_timesteps[::-1].copy()
         indices = np.floor(
             np.linspace(0, len(lcm_origin_timesteps), num=num_steps, endpoint=False)

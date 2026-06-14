@@ -24,6 +24,7 @@ class NumpyLCMScheduler:
         beta_start = config.get("beta_start", 0.00085)
         beta_end = config.get("beta_end", 0.012)
         train_steps = config.get("num_train_timesteps", 1000)
+        self.train_steps = train_steps
         betas = np.linspace(beta_start**0.5, beta_end**0.5, train_steps, dtype=np.float64) ** 2
         alphas = 1.0 - betas
         self.alphas_cumprod = np.cumprod(alphas)
@@ -34,8 +35,12 @@ class NumpyLCMScheduler:
         self.timesteps = None
 
     def set_timesteps(self, num_steps):
-        k = len(self.alphas_cumprod) // self.original_inference_steps
-        lcm_origin_timesteps = np.asarray(range(1, self.original_inference_steps + 1)) * k - 1
+        if num_steps > self.train_steps:
+            raise ValueError(f"num_steps must be <= {self.train_steps}")
+        original_steps = max(self.original_inference_steps, num_steps)
+        k = self.train_steps / float(original_steps)
+        lcm_origin_timesteps = np.rint(np.asarray(range(1, original_steps + 1)) * k - 1)
+        lcm_origin_timesteps = np.clip(lcm_origin_timesteps, 0, self.train_steps - 1).astype(np.int64)
         lcm_origin_timesteps = lcm_origin_timesteps[::-1].copy()
         indices = np.floor(
             np.linspace(0, len(lcm_origin_timesteps), num=num_steps, endpoint=False)

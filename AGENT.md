@@ -25,7 +25,7 @@ python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality,
 --negative "负向提示词"
 --seed 42
 --cfg 6.0
---steps 8
+--steps 100
 --out /home/cat/sd_outputs/name.png
 --json
 ```
@@ -65,5 +65,5 @@ python3 /home/cat/board_diag.py
 - 不要把 LCM scheduler 改成 DDIM 公式。
 - `Query dynamic range failed` 是静态 shape 模型 warning，当前可忽略。
 - 256 图是预览，不代表最终质量。
-- 质量模式较慢，默认 512x512、8 step、CFG 6.0。
-
+- 质量模式很慢，默认 512x512、100 step、CFG 6.0。它用于最终图，不用于频繁试 prompt。
+- 如果用户要更高质量，可以在 `quality` 基础上尝试 `--steps 120` 或 `--steps 150`，但会非常慢。

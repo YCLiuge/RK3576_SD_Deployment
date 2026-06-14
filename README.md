@@ -13,11 +13,11 @@
 | 运行库 | rknn-toolkit-lite2 2.3.2, librknnrt 2.3.2 |
 | 快速模式 | 256x256, 4 step, 可用 |
 | 均衡模式 | 512x512, 4 step, 可用 |
-| 高质量模式 | 512x512, 8 step, 可用 |
+| 高质量模式 | 512x512, 100 step, 可用但很慢 |
 | 文本输入 | 支持动态 prompt，也支持预计算 embedding |
 | 板端空间 | 已清理旧模型和缓存，根分区从约 78% 降到约 49% |
 
-样图：
+样图（示意图；当前 `quality` 默认已改为 100 step，实际最终图通常应优于早期 8 step 样图）：
 
 ![fast sample](assets/sample_fast.png)
 ![balanced sample](assets/sample_balanced.png)
@@ -43,7 +43,7 @@ python3 /home/cat/sd_lcm.py --mode fast --prompt "masterpiece, best quality, cat
 |---|---|---:|---:|---:|---|
 | 快速 | `--mode fast` | 256x256 | 4 | 7.0 | 快速看构图、简单图、agent 草稿 |
 | 均衡 | `--mode balanced` | 512x512 | 4 | 7.5 | 默认推荐，速度和效果平衡 |
-| 高质量 | `--mode quality` | 512x512 | 8 | 6.0 | 二次元图、细节尝试、愿意等更久 |
+| 高质量 | `--mode quality` | 512x512 | 100 | 6.0 | 最终二次元图，适合愿意等待十几分钟以上 |
 
 示例：
 
@@ -54,7 +54,7 @@ python3 /home/cat/sd_lcm.py --mode fast --prompt "masterpiece, best quality, ani
 # 均衡默认
 python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality, 1girl, white hair, blue eyes"
 
-# 高质量，指定 seed 和输出路径
+# 高质量，指定 seed 和输出路径。100 step 会明显更慢。
 python3 /home/cat/sd_lcm.py --mode quality --seed 123 --out /home/cat/sd_outputs/quality_123.png \
   --prompt "masterpiece, best quality, anime illustration, cat girl, detailed eyes, soft light"
 ```
@@ -127,7 +127,7 @@ python3 /home/cat/sd_lcm.py --help
 | `--negative "..."` | 负向提示词 |
 | `--seed 42` | 随机种子，同配置下可复现 |
 | `--cfg 7.0` | 提示词引导强度，太高容易过曝/崩脸 |
-| `--steps 4` | LCM 推理步数，越多越慢 |
+| `--steps 4` | LCM 推理步数，越多越慢；实测该模型 100 步以上质量更稳 |
 | `--resolution 256|512` | 覆盖模式默认分辨率 |
 | `--out path.png` | 指定输出图片 |
 | `--cached-embeds` | 使用 `/home/cat/pos_emb.npy` 和 `neg_emb.npy` |
@@ -301,6 +301,8 @@ D:\Anaconda3\envs\comprehensive\python.exe host\remote_board_diag.py
 python3 /home/cat/sd_lcm.py --mode quality --prompt "更完整的提示词"
 ```
 
+当前 `quality` 默认是 512x512、100 step、CFG 6.0，速度会比 `balanced` 慢很多。它是“最终图”档，不适合频繁试 prompt。
+
 ### 为什么会看到 `Query dynamic range failed`？
 
 这是静态 shape RKNN 模型查询动态范围时的 warning。当前模型能正常 load/init/inference，可以忽略。
@@ -314,10 +316,11 @@ python3 /home/cat/sd_lcm.py --mode quality --prompt "更完整的提示词"
 优先尝试：
 
 ```bash
---mode balanced
---mode quality
+--mode balanced          # 先试构图
+--mode quality           # 最终图，100 step
 --seed 其他数字
---cfg 5.5 到 7.5
+--cfg 5.0 到 7.5
+--steps 100 到 150       # 愿意更久时可以覆盖 quality 默认
 ```
 
 二次元 prompt 建议包含质量词、主体、发色/眼睛/光照/构图，例如：
@@ -359,4 +362,3 @@ worst quality, low quality, lowres, bad anatomy, bad hands, text, watermark, blu
 ```text
 59G 总容量，28G 已用，29G 可用，约 49%
 ```
-
