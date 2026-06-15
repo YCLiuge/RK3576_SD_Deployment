@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified Dreamshaper LCM Stable Diffusion runner for RK3576/RKNPU.
+"""Unified LCM Stable Diffusion runner for RK3576/RKNPU.
 
 Primary board usage:
   python3 /home/cat/sd_lcm.py --mode fast --prompt "1girl, cat ears"
@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 
 
-DEFAULT_MODEL_DIR = "/home/cat/lcm_sd"
+DEFAULT_MODEL_DIR = os.environ.get("SD_MODEL_DIR", "/home/cat/lcm_sd")
 DEFAULT_OUTPUT_DIR = "/home/cat/sd_outputs"
 DEFAULT_NEGATIVE = (
     "worst quality, low quality, lowres, bad anatomy, bad hands, text, "
@@ -47,6 +47,33 @@ MODES = {
         "description": "Slow 512x512 high-quality generation, intended for final anime images.",
     },
 }
+
+
+def load_model_info(model_dir):
+    path = os.path.join(model_dir, "model_info.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_modes(model_info):
+    modes = {name: cfg.copy() for name, cfg in MODES.items()}
+    for name, cfg in model_info.get("modes", {}).items():
+        if name in modes and isinstance(cfg, dict):
+            modes[name].update(cfg)
+    return modes
+
+
+def resolve_unet_input_count(args, model_info):
+    if args.unet_inputs != "auto":
+        return int(args.unet_inputs)
+    if "unet_input_count" in model_info:
+        return int(model_info["unet_input_count"])
+    names = model_info.get("unet_inputs") or []
+    if names:
+        return len(names)
+    return 4
 
 
 class NumpyLCMScheduler:
@@ -212,11 +239,30 @@ def tokenize_prompts(model_dir, prompt, negative):
     return encode_clip_ids(tokenizer, prompt), encode_clip_ids(tokenizer, negative)
 
 
+def read_embedding_meta(pos_emb_path):
+    path = pos_emb_path + ".json"
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_embedding_meta(args, prompt, negative):
+    meta = {
+        "prompt": prompt,
+        "negative": negative,
+        "model_dir": args.model_dir,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    with open(args.pos_emb + ".json", "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+
+
 def load_text_embeddings(args, prompt, negative):
     if args.cached_embeds:
         pos = np.load(args.pos_emb).astype(np.float32)
         neg = np.load(args.neg_emb).astype(np.float32)
-        return pos, neg, "cached"
+        return pos, neg, "cached", read_embedding_meta(args.pos_emb)
 
     if args.tokens:
         data = np.load(args.tokens)
@@ -236,7 +282,8 @@ def load_text_embeddings(args, prompt, negative):
     if args.save_embeds:
         np.save(args.pos_emb, pos)
         np.save(args.neg_emb, neg)
-    return pos, neg, "text_encoder"
+        write_embedding_meta(args, prompt, negative)
+    return pos, neg, "text_encoder", {"prompt": prompt, "negative": negative}
 
 
 def make_output_path(mode):
@@ -258,14 +305,19 @@ def decode_image(vae_output):
 
 
 def run(args):
-    mode = MODES[args.mode].copy()
+    model_info = load_model_info(args.model_dir)
+    modes = get_modes(model_info)
+    mode = modes[args.mode].copy()
     resolution = args.resolution or mode["resolution"]
     steps = args.steps or mode["steps"]
     cfg = args.cfg if args.cfg is not None else mode["cfg"]
-    prompt = args.prompt or DEFAULT_PROMPT
-    negative = args.negative or DEFAULT_NEGATIVE
+    prompt = args.prompt or model_info.get("default_prompt") or DEFAULT_PROMPT
+    negative = args.negative or model_info.get("default_negative") or DEFAULT_NEGATIVE
     output = args.out or make_output_path(args.mode)
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
+    unet_input_count = resolve_unet_input_count(args, model_info)
+    if unet_input_count not in (3, 4):
+        raise ValueError(f"Unsupported UNet input count: {unet_input_count}")
 
     paths = model_paths(args.model_dir, resolution)
     scheduler = load_scheduler(args.model_dir)
@@ -277,12 +329,12 @@ def run(args):
 
     t_all = time.perf_counter()
     t0 = time.perf_counter()
-    pos_emb, neg_emb, emb_source = load_text_embeddings(args, prompt, negative)
+    pos_emb, neg_emb, emb_source, embed_meta = load_text_embeddings(args, prompt, negative)
     emb_cat = np.concatenate([neg_emb, pos_emb], axis=0).astype(np.float32)
     text_time = time.perf_counter() - t0
     print(f"Text embeddings: {emb_source}  {text_time:.2f}s")
 
-    w_emb = build_guidance_embedding(cfg)
+    w_emb = build_guidance_embedding(cfg) if unet_input_count == 4 else None
     latent_res = paths["latent_res"]
     latent = rng.randn(1, 4, latent_res, latent_res).astype(np.float32)
 
@@ -293,14 +345,14 @@ def run(args):
         for i, timestep in enumerate(timesteps):
             latent_batch = np.concatenate([latent, latent], axis=0)
             latent_nhwc = latent_batch.transpose(0, 2, 3, 1).copy()
-            noise_out = unet.infer(
-                [
-                    latent_nhwc,
-                    np.array([int(timestep)], dtype=np.int64),
-                    emb_cat,
-                    w_emb,
-                ]
-            )[0]
+            unet_inputs = [
+                latent_nhwc,
+                np.array([int(timestep)], dtype=np.int64),
+                emb_cat,
+            ]
+            if unet_input_count == 4:
+                unet_inputs.append(w_emb)
+            noise_out = unet.infer(unet_inputs)[0]
 
             eps_neg, eps_pos = noise_out[0:1], noise_out[1:2]
             if eps_pos.shape == (1, latent_res, latent_res, 4):
@@ -334,14 +386,18 @@ def run(args):
 
     meta = {
         "mode": args.mode,
+        "model_name": model_info.get("name", "unknown"),
         "resolution": resolution,
         "steps": steps,
         "cfg": cfg,
         "seed": args.seed,
         "prompt": prompt,
         "negative": negative,
+        "encoded_prompt": embed_meta.get("prompt"),
+        "encoded_negative": embed_meta.get("negative"),
         "output": output,
         "timesteps": [int(t) for t in timesteps],
+        "unet_input_count": unet_input_count,
         "text_embedding_source": emb_source,
         "text_time_sec": round(text_time, 3),
         "unet_time_sec": round(unet_time, 3),
@@ -362,7 +418,7 @@ def run(args):
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Run Dreamshaper LCM on RK3576 NPU")
+    parser = argparse.ArgumentParser(description="Run LCM Stable Diffusion on RK3576 NPU")
     parser.add_argument("--mode", choices=sorted(MODES), default="balanced")
     parser.add_argument("--list-modes", action="store_true", help="Print mode presets and exit")
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
@@ -378,6 +434,7 @@ def parse_args(argv=None):
     parser.add_argument("--pos-emb", default="/home/cat/pos_emb.npy")
     parser.add_argument("--neg-emb", default="/home/cat/neg_emb.npy")
     parser.add_argument("--tokens", default=None, help="Use token npz with pos/neg arrays, e.g. /tmp/sd_tokens.npz")
+    parser.add_argument("--unet-inputs", choices=["auto", "3", "4"], default="auto")
     parser.add_argument("--core", choices=["core0", "auto"], default="core0")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--json", action="store_true", help="Print final metadata as one JSON line")
@@ -387,7 +444,7 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     if args.list_modes:
-        for name, cfg in MODES.items():
+        for name, cfg in get_modes(load_model_info(args.model_dir)).items():
             print(f"{name}: {cfg}")
         return None
     return run(args)

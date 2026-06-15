@@ -5,6 +5,8 @@ Date: 2026-06-15
 ## Board Cleanup
 
 The RK3576 board was cleaned after the Dreamshaper LCM pipeline was stabilized.
+Dreamshaper was later archived to Git LFS and removed from the board. The board
+now uses Counterfeit V3.0 + SD1.5 LCM LoRA under `/home/cat/lcm_sd`.
 
 Before cleanup:
 
@@ -56,6 +58,7 @@ Kept runtime-critical files:
 /home/cat/board_diag.py
 /home/cat/pos_emb.npy
 /home/cat/neg_emb.npy
+/home/cat/pos_emb.npy.json
 /home/cat/sd_outputs/
 ```
 
@@ -104,3 +107,40 @@ models/dreamshaper_lcm_rknn/
 ```
 
 Those files are tracked with Git LFS, not as normal Git blobs.
+
+## Counterfeit Replacement
+
+After the Dreamshaper backup was confirmed on GitHub, the old board model
+directory was removed:
+
+```text
+/home/cat/lcm_sd  about 4.3G, old Dreamshaper deployment
+```
+
+Then the new Counterfeit deployment was uploaded to the same runtime path:
+
+```text
+/home/cat/lcm_sd/model_info.json
+/home/cat/lcm_sd/text_encoder/model.rknn
+/home/cat/lcm_sd/unet/model.rknn
+/home/cat/lcm_sd/unet/model_256.rknn
+/home/cat/lcm_sd/vae_decoder/model.rknn
+/home/cat/lcm_sd/vae_decoder/model_256.rknn
+/home/cat/lcm_sd/scheduler/scheduler_config.json
+/home/cat/lcm_sd/tokenizer/
+```
+
+Current verified disk state after the Counterfeit upload:
+
+```text
+/dev/mmcblk1p3  59G total, 28G used, 29G available, 49% used
+/home/cat/lcm_sd  about 4.3G
+```
+
+Verified board runs:
+
+```text
+fast      256x256, 4 steps,  CFG 1.0, about 24s to 45s
+balanced  512x512, 8 steps,  CFG 1.0, about 154s
+quality   512x512, 12 steps, CFG 1.2, about 204s
+```

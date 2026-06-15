@@ -1,6 +1,6 @@
 # Agent 使用说明
 
-这是给板端 agent 的操作手册。优先调用统一入口，不要直接改 scheduler 公式。
+这是给板端 agent 的操作手册。当前模型是 **Counterfeit V3.0 + SD1.5 LCM LoRA**。优先调用统一入口，不要直接改 scheduler 公式。
 
 ## 最推荐的命令
 
@@ -18,14 +18,22 @@ python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality,
 | 默认生成 | `python3 /home/cat/sd_lcm.py --mode balanced --prompt "..."`
 | 质量优先 | `python3 /home/cat/sd_lcm.py --mode quality --prompt "..."`
 
+当前板端实测大致耗时：
+
+| 模式 | 分辨率 | 步数 | CFG | 耗时 |
+|---|---:|---:|---:|---:|
+| fast | 256 | 4 | 1.0 | 约 24 到 45 秒 |
+| balanced | 512 | 8 | 1.0 | 约 154 秒 |
+| quality | 512 | 12 | 1.2 | 约 204 秒 |
+
 ## 常用参数
 
 ```bash
 --prompt "正向提示词"
 --negative "负向提示词"
 --seed 42
---cfg 6.0
---steps 100
+--cfg 1.0
+--steps 8
 --out /home/cat/sd_outputs/name.png
 --json
 ```
@@ -65,5 +73,7 @@ python3 /home/cat/board_diag.py
 - 不要把 LCM scheduler 改成 DDIM 公式。
 - `Query dynamic range failed` 是静态 shape 模型 warning，当前可忽略。
 - 256 图是预览，不代表最终质量。
-- 质量模式很慢，默认 512x512、100 step、CFG 6.0。它用于最终图，不用于频繁试 prompt。
-- 如果用户要更高质量，可以在 `quality` 基础上尝试 `--steps 120` 或 `--steps 150`，但会非常慢。
+- Counterfeit LCM LoRA 的 CFG 通常用 1.0 到 1.5，不要按普通 SD 直接拉到 7 或 8。
+- prompt 最多 77 token，实际内容约 75 token，太长会被截断。
+- `--cached-embeds` 只适合复用固定 prompt。先读 `/home/cat/pos_emb.npy.json` 确认缓存内容。
+- 质量模式较慢，默认 512x512、12 step、CFG 1.2。试 prompt 时优先用 fast 或 balanced。

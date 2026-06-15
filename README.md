@@ -1,37 +1,45 @@
 # RK3576 Stable Diffusion LCM 部署教程
 
-本项目记录并整理了在 **Lubancat3 / RK3576** 上用 **RKNPU** 部署 Stable Diffusion LCM 的完整流程。当前已经跑通 **Dreamshaper V7 LCM**，支持 256x256 和 512x512 生成，并提供统一入口给人和 agent 调用。
+本项目记录在 **Lubancat3 / RK3576** 上用 **RKNPU** 部署 Stable Diffusion 1.5 系二次元模型的完整流程。当前板端已从旧的 Dreamshaper V7 LCM 切换为：
 
-> 编译好的 Dreamshaper LCM RKNN 模型已通过 **Git LFS** 备份在 `models/dreamshaper_lcm_rknn/`。普通 git clone 后若没有拉到大文件，请运行 `git lfs pull`。后续如果改用 Counterfeit V3.0，可以安全删除板端 Dreamshaper 模型目录。
+```text
+Counterfeit V3.0 + latent-consistency/lcm-lora-sdv1-5
+```
 
-## 当前成果
+旧的 Dreamshaper RKNN 模型已经从板子删除，节省空间；编译好的旧模型通过 Git LFS 保留在 `models/dreamshaper_lcm_rknn/`，需要时可以恢复。
+
+## 当前状态
 
 | 项目 | 状态 |
 |---|---|
 | 板子 | Lubancat3 / RK3576 / 8GB RAM |
-| 模型 | Dreamshaper V7 LCM ONNX -> RKNN |
+| 当前板端模型 | Counterfeit V3.0 + SD1.5 LCM LoRA |
+| 旧模型 | Dreamshaper V7 LCM 已从板子删除，Git LFS 归档 |
 | 运行库 | rknn-toolkit-lite2 2.3.2, librknnrt 2.3.2 |
-| 快速模式 | 256x256, 4 step, 可用 |
-| 均衡模式 | 512x512, 4 step, 可用 |
-| 高质量模式 | 512x512, 100 step, 可用但很慢 |
-| 文本输入 | 支持动态 prompt，也支持预计算 embedding |
-| 板端空间 | 已清理旧模型和缓存，根分区从约 78% 降到约 49% |
+| 统一入口 | `/home/cat/sd_lcm.py` |
+| 模型目录 | `/home/cat/lcm_sd` |
+| 输出目录 | `/home/cat/sd_outputs` |
+| 板端空间 | 根分区约 59G，总体约 49% 使用率 |
 
-样图（示意图；当前 `quality` 默认已改为 100 step，实际最终图通常应优于早期 8 step 样图）：
+已实测：
 
-![fast sample](assets/sample_fast.png)
-![balanced sample](assets/sample_balanced.png)
-![quality sample](assets/sample_quality.png)
+| 模式 | 分辨率 | 步数 | CFG | 板端耗时 | 用途 |
+|---|---:|---:|---:|---:|---|
+| fast | 256x256 | 4 | 1.0 | 约 24 到 45 秒 | 快速预览 |
+| balanced | 512x512 | 8 | 1.0 | 约 154 秒 | 默认推荐 |
+| quality | 512x512 | 12 | 1.2 | 约 204 秒 | 更慢的最终图 |
 
-## 一句话使用
+LCM LoRA 和普通 SD 不一样，CFG 不宜太高。Counterfeit 这套默认用 `1.0` 到 `1.2`，如果画面发灰或不听 prompt，可以先试 `--cfg 1.5`，不要直接拉到 7 或 8。
 
-在板子上运行：
+## 一句话运行
+
+在板子上：
 
 ```bash
-python3 /home/cat/sd_lcm.py --mode fast --prompt "masterpiece, best quality, cat girl, white hair, blue eyes"
+python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality, anime illustration, 1girl, white hair, blue eyes, detailed eyes, soft light" --json
 ```
 
-输出默认保存在：
+输出图片和同名 JSON 元数据会保存在：
 
 ```text
 /home/cat/sd_outputs/
@@ -39,95 +47,103 @@ python3 /home/cat/sd_lcm.py --mode fast --prompt "masterpiece, best quality, cat
 
 ## 三种模式
 
-| 模式 | 命令 | 分辨率 | 步数 | 默认 CFG | 适合场景 |
-|---|---|---:|---:|---:|---|
-| 快速 | `--mode fast` | 256x256 | 4 | 7.0 | 快速看构图、简单图、agent 草稿 |
-| 均衡 | `--mode balanced` | 512x512 | 4 | 7.5 | 默认推荐，速度和效果平衡 |
-| 高质量 | `--mode quality` | 512x512 | 100 | 6.0 | 最终二次元图，适合愿意等待十几分钟以上 |
+```bash
+# 快速看构图
+python3 /home/cat/sd_lcm.py --mode fast --prompt "masterpiece, best quality, anime girl"
 
-示例：
+# 默认推荐
+python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality, anime illustration, 1girl, blue eyes"
+
+# 更慢的最终图
+python3 /home/cat/sd_lcm.py --mode quality --seed 42 --out /home/cat/sd_outputs/final.png \
+  --prompt "masterpiece, best quality, anime illustration, 1girl, white hair, blue eyes, detailed eyes, soft light"
+```
+
+可以覆盖预设：
 
 ```bash
-# 快速预览
-python3 /home/cat/sd_lcm.py --mode fast --prompt "masterpiece, best quality, anime girl, cat ears"
+python3 /home/cat/sd_lcm.py --mode balanced --steps 10 --cfg 1.2 --seed 123 --prompt "..."
+```
 
-# 均衡默认
-python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality, 1girl, white hair, blue eyes"
+## Prompt 长度
 
-# 高质量，指定 seed 和输出路径。100 step 会明显更慢。
-python3 /home/cat/sd_lcm.py --mode quality --seed 123 --out /home/cat/sd_outputs/quality_123.png \
-  --prompt "masterpiece, best quality, anime illustration, cat girl, detailed eyes, soft light"
+这是 SD1.5 / CLIP tokenizer，最大长度是 77 token。扣掉开始和结束 token，实际 prompt 内容大约 75 token。超过的部分会被截断。
+
+建议写短而清楚的二次元 prompt：
+
+```text
+masterpiece, best quality, anime illustration, 1girl, white hair, blue eyes, detailed eyes, soft light
+```
+
+负向 prompt 推荐：
+
+```text
+worst quality, low quality, lowres, bad anatomy, bad hands, text, watermark, blurry
 ```
 
 ## 项目结构
 
 ```text
 .
-├─ board/                  # 上传到板子 /home/cat 后直接运行
-│  ├─ sd_lcm.py            # 统一入口，推荐 agent 调用
-│  ├─ sd_prompt.py         # 只做 prompt tokenize，输出 /tmp/sd_tokens.npz
-│  ├─ sd_inference.py      # 兼容旧接口的 wrapper
-│  ├─ board_lcm.py         # 兼容旧 512 入口
-│  ├─ board_lcm_256.py     # 兼容旧 256 入口
-│  ├─ board_gen_emb.py     # 板端生成 pos_emb.npy / neg_emb.npy
-│  └─ board_diag.py        # 板端本地诊断
-├─ host/                   # 电脑端辅助脚本
-│  ├─ deploy_board.py      # 上传 board/ 脚本到板子
-│  ├─ remote_board_diag.py # 从电脑 SSH 运行板端诊断
-│  ├─ laptop_lcm.py        # 512 ONNX golden reference
-│  ├─ laptop_lcm_256.py    # 256 ONNX golden reference
-│  └─ gen_ds_emb.py        # 电脑端用 ONNX text_encoder 生成 embedding
-├─ scripts/                # WSL 下载、编译、上传 RKNN 的脚本
-├─ configs/                # scheduler_config.json 参考配置
-├─ embeds/                 # 小体积预计算 embedding，可选
-├─ assets/                 # README 样图
-└─ docs/                   # 补充文档
+├── board/                         # 上传到板子 /home/cat 后直接运行
+│   ├── sd_lcm.py                  # 统一入口，推荐 agent 调用
+│   ├── sd_prompt.py               # 只做 tokenize，输出 /tmp/sd_tokens.npz
+│   ├── sd_inference.py            # 兼容旧接口
+│   ├── board_lcm.py               # 兼容旧 512 入口
+│   ├── board_lcm_256.py           # 兼容旧 256 入口
+│   ├── board_gen_emb.py           # 生成 pos_emb.npy / neg_emb.npy
+│   └── board_diag.py              # 板端诊断
+├── host/                          # Windows 电脑端脚本
+│   ├── deploy_board.py            # 上传 board/ 脚本到板子
+│   ├── export_counterfeit_lcm_onnx.py
+│   ├── remote_board_diag.py
+│   └── laptop_lcm*.py             # 旧 ONNX golden reference
+├── scripts/                       # WSL 下载、复制、编译、上传 RKNN
+│   ├── wsl_prepare_model.sh
+│   ├── wsl_compile_sd15.sh
+│   └── wsl_upload_model.sh
+├── configs/
+│   ├── scheduler_config.json      # 旧参考配置
+│   └── sd15_v1_inference.yaml     # SD1.5 单文件 checkpoint 加载配置
+├── models/
+│   └── dreamshaper_lcm_rknn/      # 旧 Dreamshaper RKNN 的 Git LFS 归档
+├── docs/
+└── AGENT.md                       # 给板端 agent 的操作说明
 ```
+
+生成的 Counterfeit checkpoint、ONNX、RKNN 中间产物默认不进 Git。
 
 ## 板端文件布局
 
-板子上保留的核心目录如下：
+当前板子上核心文件：
 
 ```text
 /home/cat/
-├─ sd_lcm.py
-├─ sd_prompt.py
-├─ sd_inference.py
-├─ board_lcm.py
-├─ board_lcm_256.py
-├─ board_gen_emb.py
-├─ board_diag.py
-├─ pos_emb.npy             # 可选：预计算正向 embedding
-├─ neg_emb.npy             # 可选：预计算负向 embedding
-├─ sd_outputs/             # 输出图片和 json 元数据
-└─ lcm_sd/
-   ├─ text_encoder/model.rknn
-   ├─ unet/model_256.rknn
-   ├─ unet/model.rknn
-   ├─ vae_decoder/model_256.rknn
-   ├─ vae_decoder/model.rknn
-   ├─ scheduler/scheduler_config.json
-   └─ tokenizer/{merges.txt,vocab.json,...}
+├── sd_lcm.py
+├── sd_prompt.py
+├── sd_inference.py
+├── board_lcm.py
+├── board_lcm_256.py
+├── board_gen_emb.py
+├── board_diag.py
+├── pos_emb.npy                    # 可选，当前模型的缓存 embedding
+├── pos_emb.npy.json               # embedding 对应的 prompt 记录
+├── neg_emb.npy
+├── sd_outputs/
+└── lcm_sd/
+    ├── model_info.json
+    ├── text_encoder/model.rknn
+    ├── unet/model_256.rknn
+    ├── unet/model.rknn
+    ├── vae_decoder/model_256.rknn
+    ├── vae_decoder/model.rknn
+    ├── scheduler/scheduler_config.json
+    └── tokenizer/{merges.txt,vocab.json,...}
 ```
 
-必须有的是 `/home/cat/lcm_sd` 里的模型和 tokenizer。`pos_emb.npy` / `neg_emb.npy` 只是加速默认 prompt，不是必须。
+`model_info.json` 会告诉 `sd_lcm.py` 当前模型是 3 输入 UNet 还是 4 输入 UNet，并覆盖 fast/balanced/quality 默认参数。
 
-GitHub LFS 备份位置：
-
-```text
-models/dreamshaper_lcm_rknn/
-├─ text_encoder/model.rknn
-├─ unet/model_256.rknn
-├─ unet/model.rknn
-├─ vae_decoder/model_256.rknn
-├─ vae_decoder/model.rknn
-├─ scheduler/scheduler_config.json
-└─ tokenizer/
-```
-
-## 重要参数
-
-`sd_lcm.py` 常用参数：
+## 常用参数
 
 ```bash
 python3 /home/cat/sd_lcm.py --help
@@ -139,246 +155,262 @@ python3 /home/cat/sd_lcm.py --help
 | `--prompt "..."` | 正向提示词 |
 | `--negative "..."` | 负向提示词 |
 | `--seed 42` | 随机种子，同配置下可复现 |
-| `--cfg 7.0` | 提示词引导强度，太高容易过曝/崩脸 |
-| `--steps 4` | LCM 推理步数，越多越慢；实测该模型 100 步以上质量更稳 |
-| `--resolution 256|512` | 覆盖模式默认分辨率 |
+| `--cfg 1.0` | 提示词引导强度，LCM LoRA 通常 1.0 到 1.5 |
+| `--steps 8` | 推理步数，LCM 通常 4 到 12 步 |
+| `--resolution 256|512` | 覆盖模式分辨率 |
 | `--out path.png` | 指定输出图片 |
 | `--cached-embeds` | 使用 `/home/cat/pos_emb.npy` 和 `neg_emb.npy` |
-| `--save-embeds` | 动态 prompt 后保存 embedding |
+| `--save-embeds` | 将当前 prompt 的 embedding 保存为缓存 |
 | `--tokens /tmp/sd_tokens.npz` | 使用 `sd_prompt.py` 预先 tokenize 的结果 |
-| `--json` | 额外输出一行 JSON 元数据，方便 agent 解析 |
+| `--unet-inputs auto|3|4` | 手动指定 UNet 输入数量，默认自动 |
+| `--json` | 输出一行 JSON，方便 agent 解析 |
 
-输出图片旁边会生成一个 `.json` 文件，记录 prompt、模式、seed、耗时、timesteps 等信息。
+## Agent 调用方式
 
-## Agent 推荐调用方式
-
-给 agent 最简单的主入口：
+最推荐：
 
 ```bash
-python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality, cat girl" --json
+python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality, anime girl" --json
 ```
 
-如果 agent 想分两步控制：
+如果要分两步控制 prompt：
 
 ```bash
-python3 /home/cat/sd_prompt.py "masterpiece, best quality, cat girl" "low quality, bad anatomy"
+python3 /home/cat/sd_prompt.py "masterpiece, best quality, anime girl" "low quality, bad anatomy"
 python3 /home/cat/sd_lcm.py --mode fast --tokens /tmp/sd_tokens.npz --json
 ```
 
-如果只想最快复用默认 embedding：
+如果要复用当前缓存 embedding：
 
 ```bash
 python3 /home/cat/sd_lcm.py --mode fast --cached-embeds --json
 ```
 
-更多 agent 说明见 [AGENT.md](AGENT.md)。
+注意：缓存 embedding 只代表保存时的 prompt。现在会额外写 `/home/cat/pos_emb.npy.json`，agent 可以读取它确认缓存内容。
 
-## 部署流程
+## 从零部署 Counterfeit V3.0 + LCM LoRA
 
-### 1. 准备板端 Python 环境
-
-板子上需要：
-
-```bash
-python3 -c "import numpy; from PIL import Image; from tokenizers import Tokenizer; from rknnlite.api import RKNNLite; print('ok')"
-```
-
-当前验证过：
-
-```text
-numpy 1.26.4
-Pillow OK
-tokenizers OK
-rknn-toolkit-lite2 2.3.2
-librknnrt 2.3.2
-NPU driver 0.9.8
-```
-
-`rknn_server` 仍是 2.1.0，但本项目板端本地推理主要依赖 `librknnrt`，不依赖 `rknn_server`。`rknn_server` 主要用于电脑远程 accuracy_analysis。
-
-### 2. 下载 ONNX 模型
-
-模型来源：
-
-```text
-TheyCallMeHex/LCM-Dreamshaper-V7-ONNX
-```
-
-WSL 脚本：
-
-```bash
-bash scripts/wsl_lcm_dl.sh
-```
-
-下载后应该得到：
-
-```text
-lcm_sd/
-├─ text_encoder/model.onnx
-├─ unet/model.onnx
-├─ unet/model.onnx_data
-├─ vae_decoder/model.onnx
-├─ scheduler/scheduler_config.json
-└─ tokenizer/
-```
-
-### 3. 编译 RKNN
-
-512 模型：
-
-```bash
-bash scripts/wsl_lcm_compile.sh
-```
-
-256 模型：
-
-```bash
-bash scripts/wsl_compile_256.sh
-```
-
-目标平台必须是：
-
-```python
-target_platform='rk3576'
-```
-
-编译后板端需要这些文件：
-
-```text
-/home/cat/lcm_sd/text_encoder/model.rknn
-/home/cat/lcm_sd/unet/model.rknn
-/home/cat/lcm_sd/unet/model_256.rknn
-/home/cat/lcm_sd/vae_decoder/model.rknn
-/home/cat/lcm_sd/vae_decoder/model_256.rknn
-```
-
-### 4. 上传模型和脚本
-
-上传 RKNN 模型：
-
-```bash
-bash scripts/wsl_upload_lcm.sh
-bash scripts/wsl_up256.sh
-```
-
-上传 Python 脚本：
+以下命令默认在本项目根目录运行：
 
 ```powershell
-D:\Anaconda3\envs\comprehensive\python.exe host\deploy_board.py --with-embeds
+cd D:\Electronic_Design\Workspace\Projects\RK_Series\Lubancat3
 ```
 
-如果板子 IP 不是 `10.138.103.190`：
+### 1. 准备 host 环境
+
+使用用户指定的 conda 环境：
 
 ```powershell
-D:\Anaconda3\envs\comprehensive\python.exe host\deploy_board.py --host 你的IP --with-embeds
+conda activate comprehensive
+D:\Anaconda3\envs\comprehensive\python.exe -m pip install -r requirements-host.txt
 ```
 
-### 5. 板端诊断
-
-板端本地：
-
-```bash
-python3 /home/cat/board_diag.py
-```
-
-电脑端远程：
+如果遇到 OpenMP 重复初始化：
 
 ```powershell
-D:\Anaconda3\envs\comprehensive\python.exe host\remote_board_diag.py
+$env:KMP_DUPLICATE_LIB_OK="TRUE"
 ```
 
-## 方法论：这次踩坑的真正原因
+### 2. 下载模型权重
 
-最开始输出是纯橙色块，很容易误判为 RK3576 NPU 精度不足。实际排查发现：
+推荐文件：
 
-1. 板端 NPU 输出和本机 ONNX 输出几乎一样，说明 NPU 没把这条链路算坏。
-2. 旧代码把 LCM 当 DDIM/sigma scheduler 用了。
-3. `LCMScheduler.scale_model_input()` 对 LCM 是原样返回，旧代码错误地做了 `latent / sqrt(1 + sigma^2)`。
-4. 真正的 LCM step 需要 `c_skip/c_out` boundary condition，并且非最后 step 注入随机噪声。
-5. LCM 4 step timesteps 应为 `[999, 759, 499, 259]`，不是 `[751, 501, 251, 1]`。
-6. ONNX `timestep` 输入类型是 `int64`。
+```text
+gsdf/Counterfeit-V3.0/Counterfeit-V3.0_fix_fp16.safetensors
+latent-consistency/lcm-lora-sdv1-5/pytorch_lora_weights.safetensors
+```
 
-修复这些以后，ONNX 与 RK3576 NPU 输出一致，512 图像相关性约 0.998。
+PowerShell 断点续传示例：
 
-## 常见问题
+```powershell
+New-Item -ItemType Directory -Force models\checkpoints\counterfeit_v30
+New-Item -ItemType Directory -Force models\checkpoints\lcm_lora_sdv15
 
-### 为什么 fast 总耗时比 UNet 6 秒更长？
+curl.exe -L -C - -o models\checkpoints\counterfeit_v30\Counterfeit-V3.0_fix_fp16.safetensors `
+  https://hf-mirror.com/gsdf/Counterfeit-V3.0/resolve/main/Counterfeit-V3.0_fix_fp16.safetensors
 
-日志里的 `unet_time_sec` 只统计 UNet 推理循环。总耗时还包括 RKNN 模型加载、初始化、text_encoder 和 VAE。首次运行通常更慢，连续运行会有波动。
+curl.exe -L -C - -o models\checkpoints\lcm_lora_sdv15\pytorch_lora_weights.safetensors `
+  https://hf-mirror.com/latent-consistency/lcm-lora-sdv1-5/resolve/main/pytorch_lora_weights.safetensors
+```
 
-### 为什么 256 图比较糊？
+本次实测官方 Hugging Face 直连不稳定，`hf-mirror.com` 更顺。
 
-256x256 是预览模式，目标是快。想要更好的二次元图，请用：
+### 3. 导出 ONNX
+
+```powershell
+$env:KMP_DUPLICATE_LIB_OK="TRUE"
+D:\Anaconda3\envs\comprehensive\python.exe host\export_counterfeit_lcm_onnx.py --device cuda --dtype fp16
+```
+
+输出：
+
+```text
+models/counterfeit_lcm_onnx/
+├── model_info.json
+├── text_encoder/model.onnx
+├── unet/model.onnx
+├── vae_decoder/model.onnx
+├── scheduler/scheduler_config.json
+└── tokenizer/
+```
+
+这版 UNet 是 3 输入：
+
+```text
+sample, timestep, encoder_hidden_states
+```
+
+旧 Dreamshaper LCM 蒸馏版是 4 输入，多了 `timestep_cond`。`sd_lcm.py` 已兼容两种形式。
+
+### 4. 复制到 WSL
+
+```powershell
+wsl.exe bash -lc "cd /mnt/d/Electronic_Design/Workspace/Projects/RK_Series/Lubancat3 && bash scripts/wsl_prepare_model.sh"
+```
+
+默认复制到：
+
+```text
+/home/lzy0x91f/counterfeit_lcm_sd
+```
+
+### 5. 编译 RKNN
+
+```powershell
+wsl.exe bash -lc "cd /mnt/d/Electronic_Design/Workspace/Projects/RK_Series/Lubancat3 && MODEL_DIR=/home/lzy0x91f/counterfeit_lcm_sd bash scripts/wsl_compile_sd15.sh"
+```
+
+本次实测编译结果：
+
+```text
+text_encoder/model.rknn       0.24 GB
+unet/model.rknn               1.88 GB
+unet/model_256.rknn           1.67 GB
+vae_decoder/model.rknn        0.28 GB
+vae_decoder/model_256.rknn    0.16 GB
+```
+
+### 6. 上传模型到板子
+
+```powershell
+wsl.exe bash -lc "cd /mnt/d/Electronic_Design/Workspace/Projects/RK_Series/Lubancat3 && MODEL_DIR=/home/lzy0x91f/counterfeit_lcm_sd REMOTE_MODEL_DIR=/home/cat/lcm_sd BOARD_USER=cat PASS=2335 bash scripts/wsl_upload_model.sh"
+```
+
+### 7. 上传板端脚本
+
+```powershell
+D:\Anaconda3\envs\comprehensive\python.exe host\deploy_board.py
+```
+
+不要用旧 Dreamshaper 的 `--with-embeds` 覆盖当前缓存。需要缓存时，在板子上重新生成：
 
 ```bash
-python3 /home/cat/sd_lcm.py --mode quality --prompt "更完整的提示词"
+python3 /home/cat/sd_lcm.py --mode fast --save-embeds --prompt "masterpiece, best quality, anime girl"
 ```
 
-当前 `quality` 默认是 512x512、100 step、CFG 6.0，速度会比 `balanced` 慢很多。它是“最终图”档，不适合频繁试 prompt。
+## 验证命令
 
-### 为什么会看到 `Query dynamic range failed`？
+查看模式：
 
-这是静态 shape RKNN 模型查询动态范围时的 warning。当前模型能正常 load/init/inference，可以忽略。
+```bash
+python3 /home/cat/sd_lcm.py --list-modes
+```
 
-### GitHub 上的模型文件怎么看不到或拉不全？
+快速测试：
 
-编译好的 Dreamshaper LCM RKNN 模型在 Git LFS 中。第一次克隆后请运行：
+```bash
+python3 /home/cat/sd_lcm.py --mode fast --seed 42 --out /home/cat/sd_outputs/counterfeit_fast_test.png --json \
+  --prompt "masterpiece, best quality, anime illustration, 1girl, white hair, blue eyes, detailed eyes, soft light"
+```
+
+512 测试：
+
+```bash
+python3 /home/cat/sd_lcm.py --mode balanced --seed 42 --out /home/cat/sd_outputs/counterfeit_balanced_test.png --json \
+  --prompt "masterpiece, best quality, anime illustration, 1girl, white hair, blue eyes, detailed eyes, soft light"
+```
+
+本次板端实测结果：
+
+```text
+fast:     256x256, 4 step,  total about 24s to 45s
+balanced: 512x512, 8 step,  total about 154s
+quality:  512x512, 12 step, total about 204s
+```
+
+## Dreamshaper 旧模型归档
+
+旧模型已经从板端删除，但 GitHub 通过 Git LFS 保留：
+
+```text
+models/dreamshaper_lcm_rknn/
+```
+
+第一次克隆后如果要拉旧模型：
 
 ```bash
 git lfs install
 git lfs pull
 ```
 
-如果不想下载旧 Dreamshaper 模型，也可以只用 `scripts/` 重新下载和编译新模型。
+恢复到板子时，把该目录内容上传到 `/home/cat/lcm_sd`，再部署板端脚本即可。
 
-### 如果换 prompt 后效果很差怎么办？
+## 常见问题
 
-优先尝试：
+### 为什么看到 `Query dynamic range failed`？
 
-```bash
---mode balanced          # 先试构图
---mode quality           # 最终图，100 step
---seed 其他数字
---cfg 5.0 到 7.5
---steps 100 到 150       # 愿意更久时可以覆盖 quality 默认
-```
+这是静态 shape RKNN 模型查询动态范围时的 warning。当前模型可以正常 load/init/inference，可以忽略。
 
-二次元 prompt 建议包含质量词、主体、发色/眼睛/光照/构图，例如：
+### 为什么 prompt 很长时没效果？
 
-```text
-masterpiece, best quality, anime illustration, 1girl, cat ears, white hair, blue eyes, detailed eyes, soft light
-```
+CLIP 最多 77 token，实际内容约 75 token，超出的部分会被截断。二次元模型更适合短 prompt。
 
-负向词可以用：
+### 为什么 Counterfeit 的 CFG 这么低？
 
-```text
-worst quality, low quality, lowres, bad anatomy, bad hands, text, watermark, blurry
-```
+这是 LCM LoRA 用法。普通 SD 常见 CFG 7 到 8，但 LCM LoRA 常用 1.0 左右。CFG 太高可能导致发灰、过曝或结构变差。
 
-## 板端清理记录
+### 为什么 quality 不一定总比 balanced 更好？
 
-已删除：
+LCM 不是步数越多越好。对这套模型，8 到 12 步比较合适。`quality` 更慢，适合最终图；试 prompt 时优先用 `fast` 或 `balanced`。
+
+### 可以换 Anything、MeinaMix、AOM3 吗？
+
+可以。只要是 SD1.5 checkpoint，流程基本相同：
 
 ```text
-/home/cat/check_external_data        # 精度分析中间数据，约 3.3G
-/home/cat/sd_models                  # 旧 Counterfeit/TAESD 链路，约 3.7G
-/home/cat/onnx_ref, pytorch_ref      # 旧验证数据
-/home/cat/.cache/huggingface         # 缓存，约 4.9G
-/home/cat/.cache/modelscope          # 缓存，约 1.9G
-/home/cat/.cache/pip                 # 缓存，约 2.2G
-/home/cat/tmp/pip-*                  # pip 临时目录
+下载 checkpoint -> 融合 lcm-lora-sdv1-5 -> 导出 ONNX -> WSL 编译 RKNN -> 上传 /home/cat/lcm_sd
 ```
 
-未删除：
+更换模型时重点确认：
 
 ```text
-/home/cat/lcm_sd                     # 当前部署模型，必须保留
-/home/cat/miniconda3                 # Python/conda 环境
-/home/cat/.hermes, /home/cat/projects, Desktop, Downloads 等非本项目内容
+1. 是否 SD1.5 架构
+2. tokenizer 是否 CLIP 77 token
+3. UNet ONNX 是 3 输入还是 4 输入
+4. model_info.json 是否正确
 ```
 
-清理后根分区约：
+## 清理记录
+
+已从板子删除的主要内容：
 
 ```text
-59G 总容量，28G 已用，29G 可用，约 49%
+/home/cat/check_external_data
+/home/cat/sd_models
+/home/cat/onnx_ref
+/home/cat/pytorch_ref
+/home/cat/.cache/huggingface
+/home/cat/.cache/modelscope
+/home/cat/.cache/pip
+/home/cat/tmp/pip-*
+/home/cat/lcm_sd    # 旧 Dreamshaper，已由 Counterfeit 新模型替换
+```
+
+不要删除：
+
+```text
+/home/cat/miniconda3
+/home/cat/.hermes
+/home/cat/projects
+/home/cat/lcm_sd    # 当前 Counterfeit 模型
 ```
