@@ -17,6 +17,8 @@ python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality,
 | 快速草图 | `python3 /home/cat/sd_lcm.py --mode fast --prompt "..."`
 | 默认生成 | `python3 /home/cat/sd_lcm.py --mode balanced --prompt "..."`
 | 质量优先 | `python3 /home/cat/sd_lcm.py --mode quality --prompt "..."`
+| 高迭代实验 | `python3 /home/cat/sd_lcm.py --mode quality100 --cached-embeds`
+| 极高迭代实验 | `python3 /home/cat/sd_lcm.py --mode quality150 --cached-embeds`
 
 当前板端实测大致耗时：
 
@@ -25,6 +27,8 @@ python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality,
 | fast | 256 | 4 | 1.0 | 约 24 到 45 秒 |
 | balanced | 512 | 8 | 1.0 | 约 154 秒 |
 | quality | 512 | 12 | 1.2 | 约 204 秒 |
+| quality100 | 512 | 100 | 1.0 | 估计约 25 分钟 |
+| quality150 | 512 | 150 | 1.0 | 估计约 35 分钟以上 |
 
 ## 常用参数
 
@@ -43,7 +47,7 @@ python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality,
 ### 统一入口
 
 ```bash
-python3 /home/cat/sd_lcm.py --mode fast|balanced|quality
+python3 /home/cat/sd_lcm.py --mode fast|balanced|quality|quality100|quality150
 ```
 
 ### 单独 tokenize
@@ -75,5 +79,7 @@ python3 /home/cat/board_diag.py
 - 256 图是预览，不代表最终质量。
 - Counterfeit LCM LoRA 的 CFG 通常用 1.0 到 1.5，不要按普通 SD 直接拉到 7 或 8。
 - prompt 最多 77 token，实际内容约 75 token，太长会被截断。
+- `sd_lcm.py` 的 JSON 元数据会返回 `prompt_token_count`、`prompt_truncated` 等字段。
 - `--cached-embeds` 只适合复用固定 prompt。先读 `/home/cat/pos_emb.npy.json` 确认缓存内容。
 - 质量模式较慢，默认 512x512、12 step、CFG 1.2。试 prompt 时优先用 fast 或 balanced。
+- `quality100` 和 `quality150` 是实验模式。LCM 通常不需要这么多步；只有用户明确要求高迭代时再用。

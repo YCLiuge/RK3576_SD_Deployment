@@ -46,6 +46,18 @@ MODES = {
         "cfg": 6.0,
         "description": "Slow 512x512 high-quality generation, intended for final anime images.",
     },
+    "quality100": {
+        "resolution": 512,
+        "steps": 100,
+        "cfg": 1.0,
+        "description": "Experimental 512x512 high-iteration run, 100 steps.",
+    },
+    "quality150": {
+        "resolution": 512,
+        "steps": 150,
+        "cfg": 1.0,
+        "description": "Experimental 512x512 high-iteration run, 150 steps.",
+    },
 }
 
 
@@ -60,8 +72,10 @@ def load_model_info(model_dir):
 def get_modes(model_info):
     modes = {name: cfg.copy() for name, cfg in MODES.items()}
     for name, cfg in model_info.get("modes", {}).items():
-        if name in modes and isinstance(cfg, dict):
-            modes[name].update(cfg)
+        if isinstance(cfg, dict):
+            merged = modes.get(name, {}).copy()
+            merged.update(cfg)
+            modes[name] = merged
     return modes
 
 
@@ -234,6 +248,11 @@ def encode_clip_ids(tokenizer, text):
     return np.asarray([ids], dtype=np.int64)
 
 
+def count_clip_tokens(model_dir, text):
+    tokenizer = build_clip_tokenizer(os.path.join(model_dir, "tokenizer"))
+    return len(tokenizer.encode(text).ids)
+
+
 def tokenize_prompts(model_dir, prompt, negative):
     tokenizer = build_clip_tokenizer(os.path.join(model_dir, "tokenizer"))
     return encode_clip_ids(tokenizer, prompt), encode_clip_ids(tokenizer, negative)
@@ -307,6 +326,9 @@ def decode_image(vae_output):
 def run(args):
     model_info = load_model_info(args.model_dir)
     modes = get_modes(model_info)
+    if args.mode not in modes:
+        choices = ", ".join(sorted(modes))
+        raise ValueError(f"Unknown --mode {args.mode!r}. Available modes: {choices}")
     mode = modes[args.mode].copy()
     resolution = args.resolution or mode["resolution"]
     steps = args.steps or mode["steps"]
@@ -326,6 +348,12 @@ def run(args):
 
     print(f"Mode: {args.mode}  resolution={resolution}  steps={steps}  cfg={cfg}  seed={args.seed}")
     print(f"Timesteps: {timesteps.tolist()}")
+    prompt_tokens = count_clip_tokens(args.model_dir, prompt)
+    negative_tokens = count_clip_tokens(args.model_dir, negative)
+    if prompt_tokens > 75:
+        print(f"Warning: prompt is {prompt_tokens} CLIP tokens; only the first 75 content tokens are used.")
+    if negative_tokens > 75:
+        print(f"Warning: negative prompt is {negative_tokens} CLIP tokens; only the first 75 content tokens are used.")
 
     t_all = time.perf_counter()
     t0 = time.perf_counter()
@@ -393,6 +421,11 @@ def run(args):
         "seed": args.seed,
         "prompt": prompt,
         "negative": negative,
+        "prompt_token_count": prompt_tokens,
+        "negative_token_count": negative_tokens,
+        "prompt_token_limit": 75,
+        "prompt_truncated": prompt_tokens > 75,
+        "negative_truncated": negative_tokens > 75,
         "encoded_prompt": embed_meta.get("prompt"),
         "encoded_negative": embed_meta.get("negative"),
         "output": output,
@@ -419,7 +452,7 @@ def run(args):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Run LCM Stable Diffusion on RK3576 NPU")
-    parser.add_argument("--mode", choices=sorted(MODES), default="balanced")
+    parser.add_argument("--mode", default="balanced")
     parser.add_argument("--list-modes", action="store_true", help="Print mode presets and exit")
     parser.add_argument("--model-dir", default=DEFAULT_MODEL_DIR)
     parser.add_argument("--prompt", default=None)

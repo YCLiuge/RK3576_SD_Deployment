@@ -28,6 +28,8 @@ Counterfeit V3.0 + latent-consistency/lcm-lora-sdv1-5
 | fast | 256x256 | 4 | 1.0 | 约 24 到 45 秒 | 快速预览 |
 | balanced | 512x512 | 8 | 1.0 | 约 154 秒 | 默认推荐 |
 | quality | 512x512 | 12 | 1.2 | 约 204 秒 | 更慢的最终图 |
+| quality100 | 512x512 | 100 | 1.0 | 估计约 25 分钟 | 高迭代实验 |
+| quality150 | 512x512 | 150 | 1.0 | 估计约 35 分钟以上 | 极高迭代实验 |
 
 LCM LoRA 和普通 SD 不一样，CFG 不宜太高。Counterfeit 这套默认用 `1.0` 到 `1.2`，如果画面发灰或不听 prompt，可以先试 `--cfg 1.5`，不要直接拉到 7 或 8。
 
@@ -57,6 +59,10 @@ python3 /home/cat/sd_lcm.py --mode balanced --prompt "masterpiece, best quality,
 # 更慢的最终图
 python3 /home/cat/sd_lcm.py --mode quality --seed 42 --out /home/cat/sd_outputs/final.png \
   --prompt "masterpiece, best quality, anime illustration, 1girl, white hair, blue eyes, detailed eyes, soft light"
+
+# 高迭代实验图，建议先用 --cached-embeds 避免重复跑 text encoder
+python3 /home/cat/sd_lcm.py --mode quality100 --cached-embeds --seed 42 --out /home/cat/sd_outputs/high100.png
+python3 /home/cat/sd_lcm.py --mode quality150 --cached-embeds --seed 42 --out /home/cat/sd_outputs/high150.png
 ```
 
 可以覆盖预设：
@@ -67,7 +73,7 @@ python3 /home/cat/sd_lcm.py --mode balanced --steps 10 --cfg 1.2 --seed 123 --pr
 
 ## Prompt 长度
 
-这是 SD1.5 / CLIP tokenizer，最大长度是 77 token。扣掉开始和结束 token，实际 prompt 内容大约 75 token。超过的部分会被截断。
+这是 SD1.5 / CLIP tokenizer，最大长度是 77 token。扣掉开始和结束 token，实际 prompt 内容大约 75 token。超过的部分会被截断。这里的 token 不是汉字数或英文单词数，英文逗号、空格和罕见词都会影响切分。
 
 建议写短而清楚的二次元 prompt：
 
@@ -141,7 +147,7 @@ worst quality, low quality, lowres, bad anatomy, bad hands, text, watermark, blu
     └── tokenizer/{merges.txt,vocab.json,...}
 ```
 
-`model_info.json` 会告诉 `sd_lcm.py` 当前模型是 3 输入 UNet 还是 4 输入 UNet，并覆盖 fast/balanced/quality 默认参数。
+`model_info.json` 会告诉 `sd_lcm.py` 当前模型是 3 输入 UNet 还是 4 输入 UNet，并覆盖或增加模式参数。当前包含 `fast`、`balanced`、`quality`、`quality100`、`quality150`。
 
 ## 常用参数
 
@@ -151,12 +157,12 @@ python3 /home/cat/sd_lcm.py --help
 
 | 参数 | 说明 |
 |---|---|
-| `--mode fast|balanced|quality` | 选择预设模式 |
+| `--mode fast|balanced|quality|quality100|quality150` | 选择预设模式 |
 | `--prompt "..."` | 正向提示词 |
 | `--negative "..."` | 负向提示词 |
 | `--seed 42` | 随机种子，同配置下可复现 |
 | `--cfg 1.0` | 提示词引导强度，LCM LoRA 通常 1.0 到 1.5 |
-| `--steps 8` | 推理步数，LCM 通常 4 到 12 步 |
+| `--steps 8` | 推理步数，LCM 通常 4 到 12 步；实验时可用 100 或 150 |
 | `--resolution 256|512` | 覆盖模式分辨率 |
 | `--out path.png` | 指定输出图片 |
 | `--cached-embeds` | 使用 `/home/cat/pos_emb.npy` 和 `neg_emb.npy` |
@@ -164,6 +170,16 @@ python3 /home/cat/sd_lcm.py --help
 | `--tokens /tmp/sd_tokens.npz` | 使用 `sd_prompt.py` 预先 tokenize 的结果 |
 | `--unet-inputs auto|3|4` | 手动指定 UNet 输入数量，默认自动 |
 | `--json` | 输出一行 JSON，方便 agent 解析 |
+
+JSON 元数据会包含：
+
+```text
+prompt_token_count
+negative_token_count
+prompt_token_limit
+prompt_truncated
+negative_truncated
+```
 
 ## Agent 调用方式
 
@@ -336,6 +352,7 @@ python3 /home/cat/sd_lcm.py --mode balanced --seed 42 --out /home/cat/sd_outputs
 fast:     256x256, 4 step,  total about 24s to 45s
 balanced: 512x512, 8 step,  total about 154s
 quality:  512x512, 12 step, total about 204s
+quality100/quality150 未完整跑完耗时测试，按当前 UNet 速度估计分别约 25 分钟和 35 分钟以上
 ```
 
 ## Dreamshaper 旧模型归档
@@ -371,7 +388,7 @@ CLIP 最多 77 token，实际内容约 75 token，超出的部分会被截断。
 
 ### 为什么 quality 不一定总比 balanced 更好？
 
-LCM 不是步数越多越好。对这套模型，8 到 12 步比较合适。`quality` 更慢，适合最终图；试 prompt 时优先用 `fast` 或 `balanced`。
+LCM 不是步数越多越好。对这套模型，8 到 12 步比较合适。`quality` 更慢，适合最终图；试 prompt 时优先用 `fast` 或 `balanced`。如果确实想让模型多迭代，可以用 `quality100` 或 `quality150`，但这是实验模式，耗时会变成几十分钟级别，且不保证一定比 12 步更好。
 
 ### 可以换 Anything、MeinaMix、AOM3 吗？
 

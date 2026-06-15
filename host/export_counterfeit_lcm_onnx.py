@@ -103,6 +103,18 @@ def save_model_info(args, pipe):
                 "cfg": 1.2,
                 "description": "Slower 512x512 Counterfeit LCM final image.",
             },
+            "quality100": {
+                "resolution": 512,
+                "steps": 100,
+                "cfg": 1.0,
+                "description": "Experimental 512x512 high-iteration run, 100 steps.",
+            },
+            "quality150": {
+                "resolution": 512,
+                "steps": 150,
+                "cfg": 1.0,
+                "description": "Experimental 512x512 high-iteration run, 150 steps.",
+            },
         },
     }
     path = Path(args.out_dir) / "model_info.json"
