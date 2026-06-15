@@ -7,3 +7,5 @@
 *.ps1 text eol=crlf
 *.png binary
 *.npy binary
+*.rknn filter=lfs diff=lfs merge=lfs -text
+models/** filter=lfs diff=lfs merge=lfs -text

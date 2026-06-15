@@ -83,7 +83,7 @@ generated output PNG files
 old Counterfeit/DDIM scripts
 ```
 
-Kept a small, GitHub-friendly project:
+Kept a GitHub-friendly project:
 
 ```text
 board/
@@ -97,4 +97,10 @@ AGENT.md
 requirements-*.txt
 ```
 
-No file over 100 MB remains in the Git working tree.
+Compiled Dreamshaper RKNN models were later backed up under:
+
+```text
+models/dreamshaper_lcm_rknn/
+```
+
+Those files are tracked with Git LFS, not as normal Git blobs.

@@ -13,7 +13,6 @@ sd_outputs/
 *.tmp
 
 # Large model artifacts
-models/
 lcm_sd/
 *.onnx
 *.onnx_data
@@ -30,6 +29,11 @@ check_external_data/
 *.npy
 !embeds/pos_emb.npy
 !embeds/neg_emb.npy
+
+# Explicitly keep archived RKNN deployments through Git LFS.
+!models/
+!models/dreamshaper_lcm_rknn/
+!models/dreamshaper_lcm_rknn/**
 
 # Local OS/editor
 .DS_Store

@@ -2,7 +2,7 @@
 
 本项目记录并整理了在 **Lubancat3 / RK3576** 上用 **RKNPU** 部署 Stable Diffusion LCM 的完整流程。当前已经跑通 **Dreamshaper V7 LCM**，支持 256x256 和 512x512 生成，并提供统一入口给人和 agent 调用。
 
-> 当前模型不会直接放进 GitHub：RKNN/ONNX 文件动辄几百 MB 到数 GB，GitHub 普通仓库不适合存放。仓库保留代码、脚本、说明和样图；模型需要按本文下载/编译/上传到板子。
+> 编译好的 Dreamshaper LCM RKNN 模型已通过 **Git LFS** 备份在 `models/dreamshaper_lcm_rknn/`。普通 git clone 后若没有拉到大文件，请运行 `git lfs pull`。后续如果改用 Counterfeit V3.0，可以安全删除板端 Dreamshaper 模型目录。
 
 ## 当前成果
 
@@ -111,6 +111,19 @@ python3 /home/cat/sd_lcm.py --mode quality --seed 123 --out /home/cat/sd_outputs
 ```
 
 必须有的是 `/home/cat/lcm_sd` 里的模型和 tokenizer。`pos_emb.npy` / `neg_emb.npy` 只是加速默认 prompt，不是必须。
+
+GitHub LFS 备份位置：
+
+```text
+models/dreamshaper_lcm_rknn/
+├─ text_encoder/model.rknn
+├─ unet/model_256.rknn
+├─ unet/model.rknn
+├─ vae_decoder/model_256.rknn
+├─ vae_decoder/model.rknn
+├─ scheduler/scheduler_config.json
+└─ tokenizer/
+```
 
 ## 重要参数
 
@@ -307,9 +320,16 @@ python3 /home/cat/sd_lcm.py --mode quality --prompt "更完整的提示词"
 
 这是静态 shape RKNN 模型查询动态范围时的 warning。当前模型能正常 load/init/inference，可以忽略。
 
-### 为什么 GitHub 没有模型文件？
+### GitHub 上的模型文件怎么看不到或拉不全？
 
-模型文件太大，不适合普通 Git 仓库。请用 `scripts/` 下的脚本下载和编译，或者从板子已有 `/home/cat/lcm_sd` 备份。
+编译好的 Dreamshaper LCM RKNN 模型在 Git LFS 中。第一次克隆后请运行：
+
+```bash
+git lfs install
+git lfs pull
+```
+
+如果不想下载旧 Dreamshaper 模型，也可以只用 `scripts/` 重新下载和编译新模型。
 
 ### 如果换 prompt 后效果很差怎么办？
 
